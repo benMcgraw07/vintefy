@@ -8,83 +8,54 @@ from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 
 # Set up Selenium WebDriver
 options = Options()
-options.headless = True  # Run in headless mode (no browser window)
+options.headless = True
 driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
 
-# Function to ensure the URL has the `order=newest_first` parameter
-def ensure_newest_first_order(url):
-    parsed_url = urlparse(url)
-    query_params = parse_qs(parsed_url.query)
-    # Force set order to newest_first (we know order parameter always exists)
-    query_params['order'] = ['newest_first']
-    new_query = urlencode(query_params, doseq=True)
-    new_url = urlunparse(parsed_url._replace(query=new_query))
-    return new_url
+def enforce_newest_first(url):
+    """Ensure URL has order=newest_first parameter"""
+    parsed = urlparse(url)
+    params = parse_qs(parsed.query)
+    params['order'] = ['newest_first']
+    return urlunparse(parsed._replace(query=urlencode(params, doseq=True)))
 
-# Function to fetch item links from the page
-def fetch_item_links(url):
-    print(f"Navigating to URL: {url}")
-    driver.get(url)
-    time.sleep(10)  # Wait for the page to load fully
+def get_top_items():
+    """Get URLs of top 8 items on page"""
     items = driver.find_elements(By.CSS_SELECTOR, 'a.new-item-box__overlay--clickable')
+    return [item.get_attribute('href') for item in items[:8]]
 
-    item_links = [item.get_attribute('href') for item in items[:8]]  # Get the first 8 item links
-    return item_links
+def extract_item_id(url):
+    """Extract numeric ID from item URL"""
+    return urlparse(url).path.split('/')[2].split('-')[0]
 
-# Function to extract item IDs from URLs
-def extract_item_ids(urls):
-    item_ids = []
-    for url in urls:
-        parsed_url = urlparse(url)
-        path_segments = parsed_url.path.split('/')
-        item_id = path_segments[2]  # Extract the item ID from the URL path
-        item_ids.append(item_id)
-    return item_ids
+# Initial setup
+base_url = 'https://www.vinted.co.uk/catalog?time=1743516768&disabled_personalization=true&page=1&order=newest_first&currency=GBP&search_text=apple&brand_ids[]=54661'
+monitor_url = enforce_newest_first(base_url)
+seen_items = set()
 
-# Base URL of the filtered search page (this can change)
-base_url = 'https://www.vinted.co.uk/catalog?search_text=montbell%20jacket&time=1743464869&disabled_personalization=true&size_ids[]=207&size_ids[]=208&page=1&brand_ids[]=615130&color_ids[]=1&order=price_high_to_low&price_to=75&currency=GBP'
-
-# Ensure the URL has the `order=newest_first` parameter
-url = ensure_newest_first_order(base_url)
-
-# Initialize the previous item IDs list
-previous_item_ids = []
-
-# Run the search every 30 seconds
 try:
-    first_run = True
+    print("Starting monitor - checking for new items every minute")
     while True:
-        print("Fetching items...")
+        # Load page and get items
+        driver.get(monitor_url)
+        time.sleep(10)  # Wait for page to load
         
-        # Fetch the item links
-        item_links = fetch_item_links(url)
+        current_items = get_top_items()
+        current_ids = {extract_item_id(url) for url in current_items}
         
-        # Extract item IDs from the links
-        current_item_ids = extract_item_ids(item_links)
-        
-        if first_run:
-            first_run = False
-            previous_item_ids = current_item_ids
-            print("\nTracked item IDs:")
-            for i, item_id in enumerate(previous_item_ids, start=1):
-                print(f"{i}. {item_id}")
+        # Find new items
+        new_ids = current_ids - seen_items
+        if new_ids:
+            print(f"\nNew items at {time.strftime('%H:%M:%S')}:")
+            for item_id in new_ids:
+                print(f"- {item_id}")
+            seen_items.update(new_ids)
         else:
-            # Find new item IDs by comparing with the previous list
-            new_item_ids = [item_id for item_id in current_item_ids if item_id not in previous_item_ids]
-            
-            # Display new item IDs if found
-            if new_item_ids:
-                print("\nNew item IDs found:")
-                for i, item_id in enumerate(new_item_ids, start=1):
-                    print(f"{i}. {item_id}")
-                previous_item_ids.extend(new_item_ids)
-                print("---------------------------------------------------")
-            else:
-                print("\nNo new item IDs found.\n---------------------------------------------------")
+            print(f"\nNo new items at {time.strftime('%H:%M:%S')}")
         
-        # Wait for 30 seconds before the next search
-        time.sleep(30)
+        # Wait 1 minute before next check
+        time.sleep(49)  #is 49 seconds because it take 10 seconds waiting time for page to load so takes the scan upto a minute time (+1 second for extra loading time)
+
 except KeyboardInterrupt:
-    print("\nStopping the program...")
+    print("\nMonitoring stopped by user")
 finally:
     driver.quit()
