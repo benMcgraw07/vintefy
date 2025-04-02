@@ -5,16 +5,11 @@ from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 from webdriver_manager.chrome import ChromeDriverManager
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
-from vinted_api import VintedApi
 
-
-
-
-# Set up Selenium WebDriver and API
+# Set up Selenium WebDriver
 options = Options()
 options.headless = True
 driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
-api = VintedApi()
 
 def enforce_newest_first(url):
     """Ensure URL has order=newest_first parameter"""
@@ -32,21 +27,6 @@ def extract_item_id(url):
     """Extract numeric ID from item URL"""
     return urlparse(url).path.split('/')[2].split('-')[0]
 
-def format_product_info(product):
-    """Format product information for display"""
-    if not product or not isinstance(product, dict):
-        return "Could not retrieve product details"
-    
-    return f"""
-📌 Title: {product.get('title', 'N/A')}
-💰 Price: {product.get('price', {}).get('amount', 'N/A')} {product.get('price', {}).get('currency_code', '')}
-🏷️ Brand: {product.get('brand_title', 'N/A')}
-📏 Size: {product.get('size_title', 'N/A')}
-🔄 Status: {product.get('status', 'N/A')}
-🔗 URL: https://www.vinted.fr{product.get('path', '')}
-🖼️ Main Image: {product.get('photo', {}).get('url', 'No image available')}
-"""
-
 # Initial setup
 base_url = 'https://www.vinted.co.uk/catalog?time=1743516768&disabled_personalization=true&page=1&order=newest_first&currency=GBP&search_text=apple&brand_ids[]=54661'
 monitor_url = enforce_newest_first(base_url)
@@ -57,24 +37,23 @@ try:
     while True:
         # Load page and get items
         driver.get(monitor_url)
-        time.sleep(10)
+        time.sleep(10)  # Wait for page to load
         
         current_items = get_top_items()
         current_ids = {extract_item_id(url) for url in current_items}
         
+        # Find new items
         new_ids = current_ids - seen_items
         if new_ids:
             print(f"\nNew items at {time.strftime('%H:%M:%S')}:")
             for item_id in new_ids:
-                # Get product details using the API
-                product = api.getProduct(item_id)
-                print(format_product_info(product))
-                print("─" * 60)
+                print(f"- {item_id}")
             seen_items.update(new_ids)
         else:
             print(f"\nNo new items at {time.strftime('%H:%M:%S')}")
         
-        time.sleep(49)  # Total cycle time ~1 minute
+        # Wait 1 minute before next check
+        time.sleep(49)  #is 49 seconds because it take 10 seconds waiting time for page to load so takes the scan upto a minute time (+1 second for extra loading time)
 
 except KeyboardInterrupt:
     print("\nMonitoring stopped by user")
